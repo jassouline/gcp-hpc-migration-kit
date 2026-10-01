@@ -1,0 +1,81 @@
+# ==============================================================================
+# Sim2GCP — Google Cloud Cluster Toolkit Blueprint (Slurm v6 + C3 High-Memory)
+# File: 3-blueprints/fea-highmem-slurm.yaml
+#
+# Target Workloads:
+#   RAM-intensive Finite Element Analysis (Ansys Mechanical, Abaqus Standard,
+#   COMSOL Multiphysics, Ansys HFSS) and 35M+ cell coupled thermal-structural runs.
+#   - Compute Nodes : c3-highmem-176 (88 physical cores with threads_per_core=1, 1,408 GB RAM)
+#   - Networking    : gVNIC + Compact Placement Policy
+#   - Elastic Cost  : Scale-to-Zero (static_node_count: 0)
+#   - Storage       : Cloud Filestore NFS mounted on /home across all nodes
+# ==============================================================================
+
+blueprint_name: hpc-slurm-highmem
+
+vars:
+  project_id: YOUR_GCP_PROJECT_ID
+  deployment_name: hpc-slurm-highmem
+  region: europe-west1
+  zone: europe-west1-c
+
+deployment_groups:
+  - group: primary
+    modules:
+      - id: hpc_network
+        source: modules/network/vpc
+        settings:
+          network_name: $(vars.deployment_name)-net
+          mtu: 8896
+
+      - id: homefs
+        source: modules/file-system/filestore
+        use: [hpc_network]
+        settings:
+          filestore_tier: BASIC_SSD
+          size_gb: 2560
+          local_mount: /home
+
+      - id: fea_highmem_nodeset
+        source: community/modules/compute/schedmd-slurm-gcp-v6-nodeset
+        use: [hpc_network]
+        settings:
+          machine_type: c3-highmem-176
+          node_count_static: 0
+          node_count_dynamic_max: 8
+          advanced_machine_features:
+            threads_per_core: 1
+          enable_placement: true
+          bandwidth_tier: gvnic_enabled
+          disk_type: pd-balanced
+          disk_size_gb: 500
+          allow_automatic_updates: false
+
+      - id: fea_highmem_partition
+        source: community/modules/compute/schedmd-slurm-gcp-v6-partition
+        use:
+          - fea_highmem_nodeset
+        settings:
+          partition_name: feahighmem
+          is_default: true
+          exclusive: false
+          suspend_time: 300
+
+      - id: slurm_login
+        source: community/modules/scheduler/schedmd-slurm-gcp-v6-login
+        use: [hpc_network]
+        settings:
+          name_prefix: login
+          machine_type: n2-standard-4
+          enable_login_public_ips: true
+
+      - id: slurm_controller
+        source: community/modules/scheduler/schedmd-slurm-gcp-v6-controller
+        use:
+          - hpc_network
+          - homefs
+          - slurm_login
+          - fea_highmem_partition
+        settings:
+          enable_controller_public_ips: true
+          enable_slurm_auth: true

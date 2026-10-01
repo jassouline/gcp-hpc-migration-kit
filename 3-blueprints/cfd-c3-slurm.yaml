@@ -1,0 +1,118 @@
+# ==============================================================================
+# Sim2GCP — Google Cloud Cluster Toolkit Blueprint (Slurm v6 + C3)
+# File: 3-blueprints/cfd-c3-slurm.yaml
+#
+# Target Workloads:
+#   Ansys Fluent / CFX, Siemens Star-CCM+, SU2, and general-purpose MPI solvers.
+#   - Compute Nodes : c3-standard-88 (4th Gen Intel Xeon Sapphire Rapids)
+#   - Hyper-Threading: Disabled (threads_per_core: 1 -> 44 physical cores / 352 GB RAM per VM)
+#   - Networking    : gVNIC + Compact Placement Policy (low-latency MPI)
+#   - Elastic Cost  : Scale-to-Zero (static_node_count: 0) + Spot VM partition (cfdspot)
+#   - Storage       : Cloud Filestore NFS mounted on /home across all nodes
+# ==============================================================================
+
+blueprint_name: hpc-slurm-c3
+
+vars:
+  project_id: YOUR_GCP_PROJECT_ID
+  deployment_name: hpc-slurm-c3
+  region: europe-west1
+  zone: europe-west1-c
+
+deployment_groups:
+  - group: primary
+    modules:
+      # 1. Dedicated HPC VPC Network
+      - id: hpc_network
+        source: modules/network/vpc
+        settings:
+          network_name: $(vars.deployment_name)-net
+          mtu: 8896
+
+      # 2. Shared NFS Storage (/home) via Cloud Filestore
+      - id: homefs
+        source: modules/file-system/filestore
+        use: [hpc_network]
+        settings:
+          filestore_tier: BASIC_HDD
+          size_gb: 1024
+          local_mount: /home
+
+      # 3. Node Group 1: On-Demand C3 Compute Nodes (Scale-to-Zero, up to 12 nodes = 528 physical cores)
+      - id: cfd_c3_nodeset
+        source: community/modules/compute/schedmd-slurm-gcp-v6-nodeset
+        use: [hpc_network]
+        settings:
+          machine_type: c3-standard-88
+          node_count_static: 0
+          node_count_dynamic_max: 12
+          advanced_machine_features:
+            threads_per_core: 1
+          enable_placement: true
+          bandwidth_tier: gvnic_enabled
+          disk_type: pd-balanced
+          disk_size_gb: 100
+          allow_automatic_updates: false
+
+      # 4. Partition 1: cfd (Default Partition for priority production runs)
+      - id: cfd_ondemand_partition
+        source: community/modules/compute/schedmd-slurm-gcp-v6-partition
+        use:
+          - cfd_c3_nodeset
+        settings:
+          partition_name: cfd
+          is_default: true
+          exclusive: false
+          suspend_time: 300
+
+      # 5. Node Group 2: Spot VMs C3 Compute Nodes (~65% savings for batch/parametric sweeps)
+      - id: cfd_c3_spot_nodeset
+        source: community/modules/compute/schedmd-slurm-gcp-v6-nodeset
+        use: [hpc_network]
+        settings:
+          machine_type: c3-standard-88
+          node_count_static: 0
+          node_count_dynamic_max: 12
+          advanced_machine_features:
+            threads_per_core: 1
+          enable_placement: false
+          bandwidth_tier: gvnic_enabled
+          enable_spot_vm: true
+          spot_instance_config:
+            termination_action: STOP
+          disk_type: pd-balanced
+          disk_size_gb: 100
+          allow_automatic_updates: false
+
+      # 6. Partition 2: cfdspot
+      - id: cfd_spot_partition
+        source: community/modules/compute/schedmd-slurm-gcp-v6-partition
+        use:
+          - cfd_c3_spot_nodeset
+        settings:
+          partition_name: cfdspot
+          is_default: false
+          exclusive: false
+          suspend_time: 300
+
+      # 7. Slurm Login Node
+      - id: slurm_login
+        source: community/modules/scheduler/schedmd-slurm-gcp-v6-login
+        use: [hpc_network]
+        settings:
+          name_prefix: login
+          machine_type: n2-standard-4
+          enable_login_public_ips: true
+
+      # 8. Slurm Controller (Auto-scales compute nodes down after 300s idle)
+      - id: slurm_controller
+        source: community/modules/scheduler/schedmd-slurm-gcp-v6-controller
+        use:
+          - hpc_network
+          - homefs
+          - slurm_login
+          - cfd_ondemand_partition
+          - cfd_spot_partition
+        settings:
+          enable_controller_public_ips: true
+          enable_slurm_auth: true

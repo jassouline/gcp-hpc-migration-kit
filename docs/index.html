@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'none';" />
+  <title>Sim2GCP — Interactive HPC &amp; CAE Migration Sizer for Google Cloud</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="header">
+    <div class="header-inner">
+      <div class="header-title">
+        <div class="badge-row">
+          <span class="pill pill-blue">Google Cloud HPC</span>
+          <span class="pill pill-teal">Cluster Toolkit (Slurm v6)</span>
+          <span class="pill pill-gray">Apache 2.0</span>
+        </div>
+        <h1 id="ui-title">Sim2GCP — HPC &amp; CAE Simulation Sizer &amp; Blueprint Generator</h1>
+        <p id="ui-subtitle">Migrate from On-Premise clusters, AWS ParallelCluster, or Azure CycleCloud to Google Cloud Slurm v6 in minutes.</p>
+      </div>
+      <div class="header-actions">
+        <a href="https://github.com/jassouline/gcp-hpc-migration-kit" class="btn btn-outline" id="btn-github">GitHub Repo</a>
+        <div class="lang-switch" role="group" aria-label="Language selector">
+          <button type="button" id="btn-lang-en" class="btn btn-primary">EN</button>
+          <button type="button" id="btn-lang-fr" class="btn">FR</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card card-sidebar">
+      <h2 id="ui-config-heading">1. Simulation &amp; Source Profile</h2>
+
+      <div class="form-group">
+        <label for="input-source" id="lbl-source">Current Source Environment</label>
+        <select id="input-source">
+          <option value="onprem" id="opt-src-onprem">On-Premise Workstation / Cluster</option>
+          <option value="aws-c6i" id="opt-src-awsc6i">AWS ParallelCluster — c6i / c7i (Intel Xeon)</option>
+          <option value="aws-hpc6a" id="opt-src-awshpc">AWS ParallelCluster — hpc6a / hpc7a (AMD EPYC)</option>
+          <option value="azure-hbv3" id="opt-src-azhb">Azure CycleCloud — HBv3 / HBv4 (AMD EPYC)</option>
+          <option value="azure-fx" id="opt-src-azfx">Azure CycleCloud — FX / E-series (High RAM)</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="input-solver" id="lbl-solver">Primary CAE / Simulation Solver</label>
+        <select id="input-solver">
+          <option value="fluent" id="opt-sol-fluent">Ansys Fluent / CFX (CFD)</option>
+          <option value="starccm" id="opt-sol-starccm">Siemens Star-CCM+ (CFD)</option>
+          <option value="openfoam" id="opt-sol-openfoam">OpenFOAM / WRF (Memory-Bandwidth CFD)</option>
+          <option value="abaqus" id="opt-sol-abaqus">Abaqus / Ansys Mechanical / COMSOL (FEA)</option>
+          <option value="lsdyna" id="opt-sol-lsdyna">LS-DYNA / Radioss / Custom MPI</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="input-ram-profile" id="lbl-ram-profile">Mesh Size / RAM Footprint per Core</label>
+        <select id="input-ram-profile">
+          <option value="standard" id="opt-ram-std">Standard (&lt;= 8 GB RAM / physical core)</option>
+          <option value="highmem" id="opt-ram-high">High-Memory (&gt; 8 GB RAM / physical core)</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="input-cores" id="lbl-cores">Target Physical Cores per Simulation Run</label>
+        <input type="number" id="input-cores" min="44" max="4096" step="44" value="512" />
+        <span class="form-hint" id="hint-cores">Align with your solver license pack (e.g., 128, 256, 512, or 1024 physical cores).</span>
+      </div>
+
+      <div class="form-group">
+        <label for="input-region" id="lbl-region">Target Google Cloud Region</label>
+        <select id="input-region">
+          <option value="europe-west1">europe-west1 (Belgium)</option>
+          <option value="europe-west4">europe-west4 (Netherlands)</option>
+          <option value="europe-west3">europe-west3 (Frankfurt, Germany)</option>
+          <option value="europe-west9">europe-west9 (Paris, France)</option>
+          <option value="us-central1">us-central1 (Iowa, USA)</option>
+          <option value="us-east4">us-east4 (Northern Virginia, USA)</option>
+        </select>
+        <span class="form-hint" id="hint-region">Select a geographic region supported by your target machine series.</span>
+      </div>
+
+      <div class="form-group">
+        <label for="input-project" id="lbl-project">Google Cloud Project ID</label>
+        <input type="text" id="input-project" value="my-company-hpc-cfd" maxlength="30" spellcheck="false" />
+      </div>
+    </section>
+
+    <section class="card card-main">
+      <h2 id="ui-rec-heading">2. Recommended Google Cloud Architecture &amp; Quotas</h2>
+
+      <div class="metrics-grid">
+        <div class="metric-box">
+          <div class="metric-label" id="m-lbl-machine">Recommended VM Type</div>
+          <div class="metric-value" id="m-val-machine">c3-standard-88</div>
+          <div class="metric-sub" id="m-sub-machine">threads_per_core: 1 (44 phy cores/VM)</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-label" id="m-lbl-nodes">Cluster Sizing</div>
+          <div class="metric-value" id="m-val-nodes">12 Nodes (528 Cores)</div>
+          <div class="metric-sub" id="m-sub-nodes">4,224 GB DDR5 RAM Total</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-label" id="m-lbl-quota">Required GCP Quota</div>
+          <div class="metric-value" id="m-val-quota">1,056 C3_CPUS</div>
+          <div class="metric-sub" id="m-sub-quota">Recommended request: 1,144 vCPUs</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-label" id="m-lbl-net">Interconnect &amp; Elasticity</div>
+          <div class="metric-value" id="m-val-net">gVNIC + COMPACT</div>
+          <div class="metric-sub" id="m-sub-net">Scale-to-Zero (0 VMs when idle)</div>
+        </div>
+      </div>
+
+      <div class="banner banner-success" id="rationale-banner"></div>
+      <div class="banner banner-warning" id="quota-warning-banner"></div>
+
+      <div class="code-section">
+        <div class="code-header">
+          <h3 id="hdr-cli">Step A — Check Regional Quota &amp; Deploy from Google Cloud Shell</h3>
+          <div class="code-actions">
+            <button type="button" class="btn" id="btn-copy-cli">Copy Commands</button>
+          </div>
+        </div>
+        <pre class="code-block" id="out-cli"></pre>
+      </div>
+
+      <div class="code-section">
+        <div class="code-header">
+          <h3 id="hdr-yaml">Step B — Customized Cluster Toolkit Blueprint (cluster.yaml)</h3>
+          <div class="code-actions">
+            <button type="button" class="btn" id="btn-copy-yaml">Copy YAML</button>
+            <button type="button" class="btn btn-primary" id="btn-dl-yaml">Download cluster.yaml</button>
+          </div>
+        </div>
+        <pre class="code-block" id="out-yaml"></pre>
+      </div>
+
+      <div class="code-section">
+        <div class="code-header">
+          <h3 id="hdr-sbatch">Step C — Ready-to-Run Slurm Submission Script (submit_job.sh)</h3>
+          <div class="code-actions">
+            <button type="button" class="btn" id="btn-copy-sbatch">Copy Script</button>
+            <button type="button" class="btn btn-primary" id="btn-dl-sbatch">Download submit_job.sh</button>
+          </div>
+        </div>
+        <pre class="code-block" id="out-sbatch"></pre>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="./app.js"></script>
+</body>
+</html>

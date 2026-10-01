@@ -1,0 +1,47 @@
+name: Validate Sim2GCP Blueprints & Scripts
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate Scripts, Blueprints & Web Sizer
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Validate Bash Scripts Syntax
+        run: |
+          for s in 1-assess/*.sh 2-foundation/*.sh 4-licensing-and-jobs/sbatch-templates/*.sh; do
+            echo "Checking $s..."
+            bash -n "$s"
+          done
+
+      - name: Validate Python Scripts
+        run: |
+          python3 -m py_compile 4-licensing-and-jobs/sbatch-templates/submit_python_parametric_sweep.py
+          python3 4-licensing-and-jobs/sbatch-templates/submit_python_parametric_sweep.py --dry-run
+
+      - name: Run Live Hardware Profiler Smoke Test (4s)
+        run: |
+          ./1-assess/hpc-workload-profiler.sh -d 4 -i 2 -t 512 -o /tmp/profiler_test
+          test -s /tmp/profiler_test/hpc_profile_*.md
+          test -s /tmp/profiler_test/hpc_metrics_*.csv
+
+      - name: Validate Cluster Toolkit YAML Blueprints
+        run: |
+          python3 -c '
+          import glob, yaml
+          for f in glob.glob("3-blueprints/*.yaml"):
+              with open(f) as fh:
+                  data = yaml.safe_load(fh)
+              assert "blueprint_name" in data and "deployment_groups" in data, f"Invalid blueprint: {f}"
+              print(f"Valid YAML blueprint: {f}")
+          '

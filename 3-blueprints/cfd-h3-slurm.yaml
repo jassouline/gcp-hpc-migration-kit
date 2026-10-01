@@ -1,0 +1,81 @@
+# ==============================================================================
+# Sim2GCP — Google Cloud Cluster Toolkit Blueprint (Slurm v6 + H3)
+# File: 3-blueprints/cfd-h3-slurm.yaml
+#
+# Target Workloads:
+#   Memory-bandwidth-bound CFD, OpenFOAM, Weather (WRF), and Large-Eddy Simulation.
+#   - Compute Nodes : h3-standard-88 (88 dedicated physical cores, 352 GB DDR5)
+#   - Hyper-Threading: Natively disabled on H3 (1 vCPU = 1 physical core)
+#   - Networking    : 200 Gbps gVNIC + Compact Placement Policy
+#   - Elastic Cost  : Scale-to-Zero (static_node_count: 0)
+#   - Storage       : Cloud Filestore NFS mounted on /home across all nodes
+# ==============================================================================
+
+blueprint_name: hpc-slurm-h3
+
+vars:
+  project_id: YOUR_GCP_PROJECT_ID
+  deployment_name: hpc-slurm-h3
+  # Note: In Europe, h3-standard-88 is available in europe-west4-b and europe-west4-c (Netherlands).
+  # In North America, use us-central1-a (Iowa) or northamerica-northeast1-b (Montreal).
+  region: europe-west4
+  zone: europe-west4-b
+
+deployment_groups:
+  - group: primary
+    modules:
+      - id: hpc_network
+        source: modules/network/vpc
+        settings:
+          network_name: $(vars.deployment_name)-net
+          mtu: 8896
+
+      - id: homefs
+        source: modules/file-system/filestore
+        use: [hpc_network]
+        settings:
+          filestore_tier: BASIC_SSD
+          size_gb: 2560
+          local_mount: /home
+
+      - id: cfd_h3_nodeset
+        source: community/modules/compute/schedmd-slurm-gcp-v6-nodeset
+        use: [hpc_network]
+        settings:
+          machine_type: h3-standard-88
+          node_count_static: 0
+          node_count_dynamic_max: 12
+          enable_placement: true
+          bandwidth_tier: gvnic_enabled
+          disk_type: pd-balanced
+          disk_size_gb: 100
+          allow_automatic_updates: false
+
+      - id: cfd_h3_partition
+        source: community/modules/compute/schedmd-slurm-gcp-v6-partition
+        use:
+          - cfd_h3_nodeset
+        settings:
+          partition_name: cfdh3
+          is_default: true
+          exclusive: false
+          suspend_time: 300
+
+      - id: slurm_login
+        source: community/modules/scheduler/schedmd-slurm-gcp-v6-login
+        use: [hpc_network]
+        settings:
+          name_prefix: login
+          machine_type: n2-standard-4
+          enable_login_public_ips: true
+
+      - id: slurm_controller
+        source: community/modules/scheduler/schedmd-slurm-gcp-v6-controller
+        use:
+          - hpc_network
+          - homefs
+          - slurm_login
+          - cfd_h3_partition
+        settings:
+          enable_controller_public_ips: true
+          enable_slurm_auth: true

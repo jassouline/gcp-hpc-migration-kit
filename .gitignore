@@ -1,0 +1,16 @@
+# Cluster Toolkit deployment directories & binary
+ghpc
+hpc-slurm-*/
+*.tfstate
+*.tfstate.backup
+.terraform/
+
+# Profiler output reports
+hpc_profile_*.md
+hpc_metrics_*.csv
+
+# Python & OS caches
+__pycache__/
+*.py[cod]
+.DS_Store
+.agents/
